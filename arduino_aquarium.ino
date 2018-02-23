@@ -1,30 +1,83 @@
-#include <OneWire.h>
-//#include <Wire.h> 
+#include <OneWire.h> 
 #include <LiquidCrystal_I2C.h>
 #include "RTClib.h"
+//#include "TimerOne.h"
+#include "Button.h"
 
-int DS18x20 = 12;
-OneWire  ds(DS18x20);
+#define PIN_TEMP 12
+#define PIN_LED_NIGHT 10
+#define PIN_LED_DAY 9
+#define PIN_LED_POMP 8
+#define PIN_RELAY_LIGHT 7
+#define PIN_RELAY_POMP 6
+#define PIN_BUTTON_POMP 5
+#define PIN_BUTTON_LIGHT 4
 
-//byte first_sensor[8] = {0x28, 0xFF, 0xA8, 0x3F, 0x80, 0x16, 0x5, 0x8C};
-byte second_sensor[8] = {0x28, 0xFF, 0x99, 0x67, 0x80, 0x16, 0x5, 0x1};
-float temperature;  
+#define DAY_START_HOUR 7
+#define DAY_START_MINUTE 30
+#define DAY_END_HOUR 19
+#define DAY_END_MINUTE 30
 
-LiquidCrystal_I2C lcd(0x27,16,2);  // Устанавливаем дисплей
+#define DEBOUNCE_MILLIS 30
+
+OneWire ds(PIN_TEMP);
+LiquidCrystal_I2C lcd(0x27,16,2);
 RTC_DS3231 rtc;
+
+byte first_sensor[8] = {0x28, 0xFF, 0xA8, 0x3F, 0x80, 0x16, 0x5, 0x8C};
+byte second_sensor[8] = {0x28, 0xFF, 0x99, 0x67, 0x80, 0x16, 0x5, 0x1};
+float first_temperature = 0;
+float second_temperature = 0;
+DateTime time = DateTime(0);
+
+bool led_pomp = 0;
+bool relay_pomp = 0;
+
+bool led_day = 1;
+bool led_night = 0;
+bool relay_light = 0;
+
+bool led_button_state = HIGH;
+
+Button button_light = Button(PIN_BUTTON_LIGHT);
 
 void setup(void) {
   Serial.begin(9600);
-
+  button_light.onClick(button_light_click);
   lcd.init();                     
-  lcd.backlight();// Включаем подсветку дисплея
+  lcd.backlight();
 
-  if (! rtc.begin()) {
+  if (!rtc.begin()) {
     Serial.println("Couldn't find RTC");
     while (1);
   }
 
   //adjust_rtc_time();
+
+  pinMode(11, OUTPUT);
+  digitalWrite(11, HIGH);
+
+  pinMode(PIN_LED_DAY, OUTPUT);
+  pinMode(PIN_LED_NIGHT, OUTPUT);
+  pinMode(PIN_LED_POMP, OUTPUT);
+  pinMode(PIN_RELAY_LIGHT, OUTPUT);
+  pinMode(PIN_RELAY_POMP, OUTPUT);
+//  pinMode(PIN_BUTTON_LIGHT, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_POMP, INPUT_PULLUP);
+
+  digitalWrite(PIN_RELAY_LIGHT, LOW);
+  digitalWrite(PIN_RELAY_POMP, LOW);
+//
+//  digitalWrite(PIN_LED_NIGHT, LOW);
+//  digitalWrite(PIN_LED_POMP, HIGH);
+
+//  Timer1.initialize(500000);
+//  Timer1.attachInterrupt(callback);
+}
+
+void button_light_click() {
+  led_day = !led_day;
+  led_night = !led_night;
 }
 
 float getTemperature(byte addr[]) {
@@ -59,30 +112,90 @@ float getTemperature(byte addr[]) {
 }
 
 void loop(void) {
-  float new_value = getTemperature(second_sensor);
-//  Serial.print("t1 = ");
-//  Serial.println(new_value);
-
-  if (new_value != temperature) {
-    temperature = new_value;
-    show_temperature(temperature);
+  if (updateTime()) {
+    showTime();
+  }
+  
+  if (updateFirstTemperature()) {
+    showTemperature(1, first_temperature);
   }
 
-//  celsius = getTemperature(second_sensor);
-//  fill_display_data(celsius, N2);
-//  Serial.print(", t2 = ");
-//  Serial.println(celsius);
+  if (updateSecondTemperature()) {
+    showTemperature(2, second_temperature);
+  }
 
-  show_time();
-  delay(500);
+  button_light.loop();
+  applyStates();
+  
+//  delay(100);
 }
 
-void show_time() {
+void updateLightState() {
+  byte hour = time.hour();
+  byte minute = time.minute();
+
+  bool after_day_start = hour > DAY_START_HOUR || (hour == DAY_START_HOUR && minute >= DAY_START_MINUTE);
+  bool before_day_end = hour < DAY_END_HOUR || (hour == DAY_END_HOUR && minute < DAY_END_MINUTE);
+
+  if (after_day_start && before_day_end) {
+    led_day = 1;
+    led_night = 0;
+    relay_light = 1;    
+  } else {
+    led_day = 0;
+    led_night = 1;
+    relay_light = 0;    
+  }
+}
+
+void applyStates() {
+//  digitalWrite(PIN_RELAY_LIGHT, relay_light);
+  digitalWrite(PIN_LED_DAY, led_day);
+  digitalWrite(PIN_LED_NIGHT, led_night);
+
+//  digitalWrite(PIN_RELAY_POMP, relay_pomp);
+  digitalWrite(PIN_LED_POMP, led_pomp);
+}
+
+bool updateFirstTemperature() {
+  float t = getTemperature(first_sensor);
+  if (first_temperature == t) {
+    return false;
+  }
+
+  first_temperature = t;
+  return true;
+}
+
+bool updateSecondTemperature() {
+  float t = getTemperature(second_sensor);
+  if (second_temperature == t) {
+    return false;
+  }
+
+  second_temperature = t;
+  return true;
+}
+
+
+bool updateTime() {
   DateTime now = rtc.now();
   byte hour = now.hour();
   byte minute = now.minute();
+
+  if (time.minute() == now.minute()) {
+    return false;
+  }
+
+  time = now;
+  return true;
+}
+
+void showTime() {
+  byte hour = time.hour();
+  byte minute = time.minute();
   
-  lcd.setCursor(11, 0);
+  lcd.setCursor(5, 0);
   if (hour < 10) {
     lcd.print(0);
   }
@@ -97,8 +210,13 @@ void show_time() {
   lcd.print(minute, DEC);
 }
 
-void show_temperature(float value) {
-  lcd.setCursor(8, 1);
+void showTemperature(int position, float value) {
+  if (position == 1) {
+    lcd.setCursor(0, 1);
+  } else {
+    lcd.setCursor(11, 1);  
+  }
+  
   lcd.print(value);
 }
 
