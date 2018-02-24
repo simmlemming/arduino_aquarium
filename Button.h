@@ -2,12 +2,9 @@
 
 class Button {
   public:
-    Button(int pin);
+    Button(int pin, void (*_onClick)());
     void loop();
-    void onClick(void (*onClick)());
-
-    //     void attachInterrupt(void (*isr)())
-    
+        
    private:
     int _pin;
     int _prev_state = HIGH;

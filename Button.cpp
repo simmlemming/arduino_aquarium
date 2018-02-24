@@ -1,8 +1,10 @@
 #include "Arduino.h"
 #include "Button.h"
 
-Button::Button(int pin) {
+Button::Button(int pin, void (*onClick)()) {
   _pin = pin;
+  _onClick = onClick;
+
   pinMode(_pin, INPUT_PULLUP);
 }
 
@@ -29,8 +31,3 @@ void Button::_onDebouncedStateChange(int state) {
     _onClickCalled = false;
   }
 }
-
-void Button::onClick(void (*onClick)()) {
-  _onClick = onClick;
-}
-

@@ -3,6 +3,9 @@
 #include "RTClib.h"
 //#include "TimerOne.h"
 #include "Button.h"
+#include "ObservableFloat.h"
+#include "ObservableInt.h"
+#include "ObservableDateTime.h"
 
 #define PIN_TEMP 12
 #define PIN_LED_NIGHT 10
@@ -18,7 +21,8 @@
 #define DAY_END_HOUR 19
 #define DAY_END_MINUTE 30
 
-#define DEBOUNCE_MILLIS 30
+#define DAY 1
+#define NIGHT 2
 
 OneWire ds(PIN_TEMP);
 LiquidCrystal_I2C lcd(0x27,16,2);
@@ -26,24 +30,69 @@ RTC_DS3231 rtc;
 
 byte first_sensor[8] = {0x28, 0xFF, 0xA8, 0x3F, 0x80, 0x16, 0x5, 0x8C};
 byte second_sensor[8] = {0x28, 0xFF, 0x99, 0x67, 0x80, 0x16, 0x5, 0x1};
-float first_temperature = 0;
-float second_temperature = 0;
-DateTime time = DateTime(0);
+
 
 bool led_pomp = 0;
 bool relay_pomp = 0;
 
-bool led_day = 1;
+bool led_day = 0;
 bool led_night = 0;
 bool relay_light = 0;
 
-bool led_button_state = HIGH;
+void onT1Changed(float old_value, float new_value) {
+  showTemperature(1, new_value);
+}
 
-Button button_light = Button(PIN_BUTTON_LIGHT);
+void onT2Changed(float old_value, float new_value) {
+  showTemperature(2, new_value);
+}
+
+void switchToDay() {
+    led_day = 1;
+    led_night = 0;
+    relay_light = 1;
+}
+
+void switchToNight() {
+    led_day = 0;
+    led_night = 1;
+    relay_light = 0;
+}
+
+void onTimeOfDayChangedByRtc(int old_value, int new_value) {
+  if (new_value == DAY) {
+    switchToDay();
+    lcd.setCursor(15, 0);
+    lcd.print("D");
+  } else {
+    switchToNight();
+    lcd.setCursor(15, 0);
+    lcd.print("N");
+  }
+}
+
+ObservableInt timeOfDay = ObservableInt(-1, onTimeOfDayChangedByRtc);
+
+void onButtonLightClick() {
+  if (relay_light == 0) {
+    switchToDay();
+  } else {
+    switchToNight();
+  }
+}
+
+void onTimeChanged(DateTime old_value, DateTime new_value) {
+  showTime(new_value);
+}
+
+ObservableFloat t1 = ObservableFloat(0, onT1Changed);
+ObservableFloat t2 = ObservableFloat(0, onT2Changed);
+Button buttonLight = Button(PIN_BUTTON_LIGHT, onButtonLightClick);
+ObservableDateTime time = ObservableDateTime(0, onTimeChanged);
 
 void setup(void) {
   Serial.begin(9600);
-  button_light.onClick(button_light_click);
+  
   lcd.init();                     
   lcd.backlight();
 
@@ -73,11 +122,6 @@ void setup(void) {
 
 //  Timer1.initialize(500000);
 //  Timer1.attachInterrupt(callback);
-}
-
-void button_light_click() {
-  led_day = !led_day;
-  led_night = !led_night;
 }
 
 float getTemperature(byte addr[]) {
@@ -112,25 +156,18 @@ float getTemperature(byte addr[]) {
 }
 
 void loop(void) {
-  if (updateTime()) {
-    showTime();
-  }
+  time.setValue(rtc.now());
+  t1.setValue(getTemperature(first_sensor));
+  t2.setValue(getTemperature(second_sensor));
+  timeOfDay.setValue(toTimeOfDay(time.getValue()));
   
-  if (updateFirstTemperature()) {
-    showTemperature(1, first_temperature);
-  }
-
-  if (updateSecondTemperature()) {
-    showTemperature(2, second_temperature);
-  }
-
-  button_light.loop();
+  buttonLight.loop();
   applyStates();
   
 //  delay(100);
 }
 
-void updateLightState() {
+int toTimeOfDay(DateTime time) {
   byte hour = time.hour();
   byte minute = time.minute();
 
@@ -138,14 +175,10 @@ void updateLightState() {
   bool before_day_end = hour < DAY_END_HOUR || (hour == DAY_END_HOUR && minute < DAY_END_MINUTE);
 
   if (after_day_start && before_day_end) {
-    led_day = 1;
-    led_night = 0;
-    relay_light = 1;    
-  } else {
-    led_day = 0;
-    led_night = 1;
-    relay_light = 0;    
+    return DAY;
   }
+  
+  return NIGHT;
 }
 
 void applyStates() {
@@ -157,41 +190,7 @@ void applyStates() {
   digitalWrite(PIN_LED_POMP, led_pomp);
 }
 
-bool updateFirstTemperature() {
-  float t = getTemperature(first_sensor);
-  if (first_temperature == t) {
-    return false;
-  }
-
-  first_temperature = t;
-  return true;
-}
-
-bool updateSecondTemperature() {
-  float t = getTemperature(second_sensor);
-  if (second_temperature == t) {
-    return false;
-  }
-
-  second_temperature = t;
-  return true;
-}
-
-
-bool updateTime() {
-  DateTime now = rtc.now();
-  byte hour = now.hour();
-  byte minute = now.minute();
-
-  if (time.minute() == now.minute()) {
-    return false;
-  }
-
-  time = now;
-  return true;
-}
-
-void showTime() {
+void showTime(DateTime time) {
   byte hour = time.hour();
   byte minute = time.minute();
   
