@@ -11,8 +11,8 @@
 #define PIN_LED_NIGHT 10
 #define PIN_LED_DAY 9
 #define PIN_LED_POMP 8
-#define PIN_RELAY_LIGHT 7
-#define PIN_RELAY_POMP 6
+#define PIN_RELAY_POMP 7
+#define PIN_RELAY_LIGHT 6
 #define PIN_BUTTON_POMP 5
 #define PIN_BUTTON_LIGHT 4
 
@@ -159,7 +159,7 @@ void toggleLedPomp() {
 }
 
 void setup(void) {
-  Serial.begin(9600);
+//  Serial.begin(9600);
   
   lcd.init();                     
   lcd.backlight();
@@ -219,10 +219,30 @@ float getTemperature(byte addr[]) {
   return (float)raw / 16.0;
 }
 
+class TemperatureUpdater {
+  private:
+    unsigned long _delay_ms = 500;
+    unsigned long _last_measure_ms = 0;
+
+  public:
+    void loop() {
+      if (millis() - _last_measure_ms < _delay_ms) {
+        return;
+      }
+
+      t1.setValue(getTemperature(first_sensor));
+      t2.setValue(getTemperature(second_sensor));
+  
+      _last_measure_ms = millis();
+    }
+};
+
+TemperatureUpdater temperatureUpdater = TemperatureUpdater();
+
 void loop(void) {
   time.setValue(rtc.now());
-  t1.setValue(getTemperature(first_sensor));
-  t2.setValue(getTemperature(second_sensor));
+
+  temperatureUpdater.loop();
 
   // This changes led_* and relay_* states
   timeOfDay.setValue(toTimeOfDay(time.getValue()));
