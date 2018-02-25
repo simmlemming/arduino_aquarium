@@ -2,35 +2,34 @@
 #include "ObservableDateTime.h"
 
 
-ObservableDateTime::ObservableDateTime(DateTime value, void (*onChanged)(DateTime old_value, DateTime new_value)) {
+ObservableDateTime::ObservableDateTime(DateTime value, void (*onMinuteChanged)(DateTime time), void (*onSecondChanged)(DateTime time)) {
   _value = value;
-  _onChanged = onChanged;
+  _onMinuteChanged = onMinuteChanged;
+  _onSecondChanged = onSecondChanged;
 }
 
 void ObservableDateTime::setValue(DateTime value) {
-  if (_eq(_value, value)) {
-    return;
+  if (_is_minute_changed(_value, value)) {
+    _onMinuteChanged(value);
+  }
+
+  if (_is_second_changed(_value, value)) {
+    _onSecondChanged(value);
   }
 
   DateTime old_value = _value;
   _value = value;
-
-  _onChanged(old_value, _value);
 }
 
 DateTime ObservableDateTime::getValue() {
   return _value;
 }
 
-bool ObservableDateTime::_eq(DateTime first, DateTime second) {
-  if (first.hour() != second.hour()) {
-    return false;
-  }
+bool ObservableDateTime::_is_minute_changed(DateTime first, DateTime second) {
+  return  first.minute() != second.minute();
+}
 
-  if (first.minute() != second.minute()) {
-    return false;
-  }
-
-  return true;
+bool ObservableDateTime::_is_second_changed(DateTime first, DateTime second) {
+  return  first.second() != second.second();
 }
 

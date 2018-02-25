@@ -1,7 +1,7 @@
 #include <OneWire.h> 
 #include <LiquidCrystal_I2C.h>
 #include "RTClib.h"
-//#include "TimerOne.h"
+#include "TimerOne.h"
 #include "Button.h"
 #include "ObservableFloat.h"
 #include "ObservableInt.h"
@@ -23,6 +23,11 @@
 
 #define DAY 1
 #define NIGHT 2
+#define ON 3
+#define OFF 4
+#define OFF_TIMER 5
+
+#define POMP_TIMER_MIN 15
 
 OneWire ds(PIN_TEMP);
 LiquidCrystal_I2C lcd(0x27,16,2);
@@ -31,9 +36,11 @@ RTC_DS3231 rtc;
 byte first_sensor[8] = {0x28, 0xFF, 0xA8, 0x3F, 0x80, 0x16, 0x5, 0x8C};
 byte second_sensor[8] = {0x28, 0xFF, 0x99, 0x67, 0x80, 0x16, 0x5, 0x1};
 
-
-bool led_pomp = 0;
+volatile bool led_pomp = 0;
 bool relay_pomp = 0;
+int state_pomp = ON;
+DateTime timeToTurnOnPomp;
+TimeSpan tmpTimeSpan = TimeSpan(0, 0, 0, 0);
 
 bool led_day = 0;
 bool led_night = 0;
@@ -81,14 +88,75 @@ void onButtonLightClick() {
   }
 }
 
-void onTimeChanged(DateTime old_value, DateTime new_value) {
-  showTime(new_value);
+void onButtonPompClick() {
+  if (state_pomp == ON) {
+    switchPomp(OFF_TIMER);
+  } else if (state_pomp == OFF_TIMER) {
+    switchPomp(OFF);
+  } else {
+    switchPomp(ON);
+  }
+}
+
+void switchPomp(int new_state) {
+  state_pomp = new_state;
+  DateTime now = rtc.now();
+
+  if (new_state == ON) {
+    Timer1.stop();
+    relay_pomp = 1;
+    led_pomp = 1;
+    showTime(now.hour(), now.minute());
+    return;
+  }
+  
+  if (new_state == OFF_TIMER) {
+    Timer1.start();
+    relay_pomp = 0;
+    led_pomp = 0;
+    tmpTimeSpan = TimeSpan(0, 0, POMP_TIMER_MIN, 0);
+    timeToTurnOnPomp = now + tmpTimeSpan;
+    showTime(tmpTimeSpan.minutes(), tmpTimeSpan.seconds());
+    return;
+  }
+
+  // OFF
+  Timer1.stop();
+  relay_pomp = 0;
+  led_pomp = 0;
+  showTime(now.hour(), now.minute());
+}
+
+void onMinuteChanged(DateTime time) {
+  if (state_pomp != OFF_TIMER) {
+    showTime(time.hour(), time.minute());
+  }
+}
+
+void onSecondChanged(DateTime time) {
+  if (state_pomp != OFF_TIMER) {
+    return;
+  }
+
+  tmpTimeSpan = timeToTurnOnPomp - rtc.now();
+  if (tmpTimeSpan.seconds() < 0) {
+    switchPomp(ON);
+    showTime(time.hour(), time.minute());
+  } else {
+    showTime(tmpTimeSpan.minutes(), tmpTimeSpan.seconds());
+  }
 }
 
 ObservableFloat t1 = ObservableFloat(0, onT1Changed);
 ObservableFloat t2 = ObservableFloat(0, onT2Changed);
+ObservableDateTime time = ObservableDateTime(0, onMinuteChanged, onSecondChanged);
+
 Button buttonLight = Button(PIN_BUTTON_LIGHT, onButtonLightClick);
-ObservableDateTime time = ObservableDateTime(0, onTimeChanged);
+Button buttonPomp = Button(PIN_BUTTON_POMP, onButtonPompClick);
+
+void toggleLedPomp() {
+  led_pomp = !led_pomp;
+}
 
 void setup(void) {
   Serial.begin(9600);
@@ -111,17 +179,13 @@ void setup(void) {
   pinMode(PIN_LED_POMP, OUTPUT);
   pinMode(PIN_RELAY_LIGHT, OUTPUT);
   pinMode(PIN_RELAY_POMP, OUTPUT);
-//  pinMode(PIN_BUTTON_LIGHT, INPUT_PULLUP);
-  pinMode(PIN_BUTTON_POMP, INPUT_PULLUP);
+  
+  Timer1.initialize(250000);
+  Timer1.attachInterrupt(toggleLedPomp);
+  Timer1.stop();
 
-  digitalWrite(PIN_RELAY_LIGHT, LOW);
-  digitalWrite(PIN_RELAY_POMP, LOW);
-//
-//  digitalWrite(PIN_LED_NIGHT, LOW);
-//  digitalWrite(PIN_LED_POMP, HIGH);
-
-//  Timer1.initialize(500000);
-//  Timer1.attachInterrupt(callback);
+  switchPomp(ON);
+  switchToDay();
 }
 
 float getTemperature(byte addr[]) {
@@ -159,12 +223,15 @@ void loop(void) {
   time.setValue(rtc.now());
   t1.setValue(getTemperature(first_sensor));
   t2.setValue(getTemperature(second_sensor));
+
+  // This changes led_* and relay_* states
   timeOfDay.setValue(toTimeOfDay(time.getValue()));
   
   buttonLight.loop();
-  applyStates();
+  buttonPomp.loop();
   
-//  delay(100);
+  applyStates();
+//  delay(500);
 }
 
 int toTimeOfDay(DateTime time) {
@@ -182,31 +249,28 @@ int toTimeOfDay(DateTime time) {
 }
 
 void applyStates() {
-//  digitalWrite(PIN_RELAY_LIGHT, relay_light);
+  digitalWrite(PIN_RELAY_LIGHT, relay_light);
   digitalWrite(PIN_LED_DAY, led_day);
   digitalWrite(PIN_LED_NIGHT, led_night);
 
-//  digitalWrite(PIN_RELAY_POMP, relay_pomp);
+  digitalWrite(PIN_RELAY_POMP, relay_pomp);
   digitalWrite(PIN_LED_POMP, led_pomp);
 }
 
-void showTime(DateTime time) {
-  byte hour = time.hour();
-  byte minute = time.minute();
-  
+void showTime(int first, int second) {
   lcd.setCursor(5, 0);
-  if (hour < 10) {
+  if (first < 10) {
     lcd.print(0);
   }
   
-  lcd.print(hour, DEC);
+  lcd.print(first, DEC);
   lcd.print(":");
 
-  if (minute < 10) {
+  if (second < 10) {
     lcd.print(0);
   }
   
-  lcd.print(minute, DEC);
+  lcd.print(second, DEC);
 }
 
 void showTemperature(int position, float value) {
