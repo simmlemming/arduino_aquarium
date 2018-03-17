@@ -16,10 +16,15 @@
 #define PIN_BUTTON_POMP 5
 #define PIN_BUTTON_LIGHT 4
 
-#define DAY_START_HOUR 7
-#define DAY_START_MINUTE 30
-#define DAY_END_HOUR 19
-#define DAY_END_MINUTE 30
+#define DAY_START_HOUR_1 7
+#define DAY_START_MINUTE_1 30
+#define DAY_END_HOUR_1 14
+#define DAY_END_MINUTE_1 0
+
+#define DAY_START_HOUR_2 16
+#define DAY_START_MINUTE_2 0
+#define DAY_END_HOUR_2 19
+#define DAY_END_MINUTE_2 30
 
 #define DAY 1
 #define NIGHT 2
@@ -258,10 +263,10 @@ int toTimeOfDay(DateTime time) {
   byte hour = time.hour();
   byte minute = time.minute();
 
-  bool after_day_start = hour > DAY_START_HOUR || (hour == DAY_START_HOUR && minute >= DAY_START_MINUTE);
-  bool before_day_end = hour < DAY_END_HOUR || (hour == DAY_END_HOUR && minute < DAY_END_MINUTE);
-
-  if (after_day_start && before_day_end) {
+  bool isDay1 = between(hour, minute, DAY_START_HOUR_1, DAY_START_MINUTE_1, DAY_END_HOUR_1, DAY_END_MINUTE_1);
+  bool isDay2 = between(hour, minute, DAY_START_HOUR_2, DAY_START_MINUTE_2, DAY_END_HOUR_2, DAY_END_MINUTE_2);
+  
+  if (isDay1 || isDay2) {
     return DAY;
   }
   
@@ -301,6 +306,13 @@ void showTemperature(int position, float value) {
   }
   
   lcd.print(value);
+}
+
+bool between(int h, int m, int h1, int m1, int h2, int m2) {
+  bool after_start = h > h1 || (h == h1 && m >= m1);
+  bool before_end = h < h2 || (h == h2 && m < m2);
+
+  return after_start && before_end;
 }
 
 void adjust_rtc_time() {
