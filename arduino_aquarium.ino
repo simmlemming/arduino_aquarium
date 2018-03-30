@@ -1,6 +1,6 @@
 #include <OneWire.h> 
 #include <LiquidCrystal_I2C.h>
-#include <RTC_DS3231_DST.h>
+#include <RTC_DS3231_DST.h> // https://github.com/simmlemming/arduino_lib_RTC_DS3231_DST
 #include "TimerOne.h"
 #include "Button.h"
 #include "ObservableFloat.h"
