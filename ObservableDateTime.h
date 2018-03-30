@@ -10,7 +10,7 @@ class ObservableDateTime {
     bool _is_second_changed(DateTime first, DateTime second);
     
   public:
-    ObservableDateTime::ObservableDateTime(DateTime value, void (*onMinuteChanged)(DateTime time), void (*onSecondChanged)(DateTime time));
+    ObservableDateTime(DateTime value, void (*onMinuteChanged)(DateTime time), void (*onSecondChanged)(DateTime time));
     void setValue(DateTime value);
     DateTime getValue();
 };

@@ -6,7 +6,7 @@ class ObservableFloat {
     void (*_onChanged)(float old_value, float new_value);
     
   public:
-    ObservableFloat::ObservableFloat(float value, void (*onChanged)(float old_value, float new_value));
+    ObservableFloat(float value, void (*onChanged)(float old_value, float new_value));
     void setValue(float value);
     float getValue();
 };
