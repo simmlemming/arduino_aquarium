@@ -1,6 +1,6 @@
 #include <OneWire.h> 
 #include <LiquidCrystal_I2C.h>
-#include "RTClib.h"
+#include <RTC_DS3231_DST.h>
 #include "TimerOne.h"
 #include "Button.h"
 #include "ObservableFloat.h"
@@ -36,7 +36,7 @@
 
 OneWire ds(PIN_TEMP);
 LiquidCrystal_I2C lcd(0x27,16,2);
-RTC_DS3231 rtc;
+RTC_DS3231_DST rtc;
 
 byte first_sensor[8] = {0x28, 0xFF, 0xA8, 0x3F, 0x80, 0x16, 0x5, 0x8C};
 byte second_sensor[8] = {0x28, 0xFF, 0x99, 0x67, 0x80, 0x16, 0x5, 0x1};
